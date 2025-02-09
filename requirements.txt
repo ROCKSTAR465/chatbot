@@ -1,4 +1,7 @@
 pandas
-sqlite3
-letta-client
+psycopg2
 streamlit
+letta-client
+sqlalchemy
+openpyxl  # Required for reading Excel files
+rich  # For improved logging and exception handling
