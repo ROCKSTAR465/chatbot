@@ -1,0 +1,4 @@
+pandas
+sqlite3
+letta-client
+streamlit
