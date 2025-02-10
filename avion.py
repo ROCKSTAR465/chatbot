@@ -1,92 +1,74 @@
-import os
+import streamlit as st
 import pandas as pd
 import sqlite3
-import streamlit as st
-from letta_client import Letta
+import json
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+import torch
+import re
+import os
 
-# Install required dependencies
-# Run the following command before executing the script:
-# pip install pandas sqlite3 letta-client streamlit
+# Load tokenizer and model for text-to-SQL conversion
+tokenizer = AutoTokenizer.from_pretrained("cssupport/t5-small-awesome-text-to-sql", use_fast=False)
+model = AutoModelForSeq2SeqLM.from_pretrained("cssupport/t5-small-awesome-text-to-sql")
 
-# Initialize Letta for memory management
-letta = Letta()
+# Paths for database and chat history storage
+db_path = "chatbot_data.db"
+chat_memory_path = "chat_memory.json"
 
-# Database setup
-def setup_database():
-    conn = sqlite3.connect("business.db")
-    cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS business_data (
-                        id INTEGER PRIMARY KEY,
-                        category TEXT,
-                        revenue REAL,
-                        profit REAL)''')
-    conn.commit()
-    conn.close()
+def init_db():
+    conn = sqlite3.connect(db_path)
+    return conn
 
-# Load Excel data into SQL
-def load_excel_to_sql(file_path):
-    df = pd.read_excel(file_path)
-    conn = sqlite3.connect("business.db")
-    df.to_sql("business_data", conn, if_exists="replace", index=False)
-    conn.close()
+def upload_and_store_data(file, conn):
+    df = pd.read_excel(file)
+    table_name = "data_table"
+    df.to_sql(table_name, conn, if_exists='replace', index=False)
+    return df
 
-# Process user queries
-def process_query(query):
-    conn = sqlite3.connect("business.db")
-    cursor = conn.cursor()
-    cursor.execute(query)
-    results = cursor.fetchall()
-    conn.close()
-    return results
+def generate_sql_query(user_input, table_name):
+    prompt = (
+        f"Translate the following natural language query into an SQL query: "
+        f"The table is named '{table_name}'. The query is: '{user_input}'."
+    )
 
-# Streamlit App
-def main():
-    st.title("🤖 Business Analysis Chatbot")
-    st.write("Ask me anything about your business data!")
+    input_ids = tokenizer.encode(prompt, return_tensors="pt", max_length=512, truncation=True)
+    outputs = model.generate(input_ids, max_length=150, num_beams=5, early_stopping=True)
+    result = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-    # Initialize session state for chat history
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+    sql_match = re.search(r"select.*?from.*?(where.*?|);?$", result, re.IGNORECASE | re.DOTALL)
+    return sql_match.group(0).strip() if sql_match else None
 
-    # Load data and setup database
-    file_path = "data.xlsx"  # Update this path to your Excel file
-    if not os.path.exists(file_path):
-        st.error(f"File '{file_path}' not found. Please ensure the file exists.")
-        return
+def load_chat_memory():
+    if os.path.exists(chat_memory_path):
+        with open(chat_memory_path, "r") as f:
+            return json.load(f)
+    return []
 
-    setup_database()
-    load_excel_to_sql(file_path)
+def save_chat_memory(history):
+    with open(chat_memory_path, "w") as f:
+        json.dump(history, f)
 
-    # Display chat history
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.write(message["content"])
+st.title("Text-to-SQL Chatbot")
+st.sidebar.header("Upload an Excel file")
 
-    # User input
-    user_input = st.chat_input("Type your question here...")
+conn = init_db()
 
-    if user_input:
-        # Append user input to chat history
-        st.session_state.messages.append({"role": "user", "content": user_input})
+uploaded_file = st.sidebar.file_uploader("Choose an Excel file", type=["xlsx"])
+if uploaded_file:
+    df = upload_and_store_data(uploaded_file, conn)
+    st.write("Data uploaded successfully! Here is a preview:")
+    st.dataframe(df.head())
 
-        # Process query using Letta memory
-        letta.store_message(user_input)
-        query = f"SELECT * FROM business_data WHERE category LIKE '%{user_input}%'"
-        response = process_query(query)
-
-        # Generate bot response
-        if response:
-            bot_response = f"Here's the data: {response}"
+user_query = st.text_input("Ask your question about the data:")
+if user_query:
+    try:
+        sql_query = generate_sql_query(user_query, "data_table")
+        if sql_query:
+            result = pd.read_sql_query(sql_query, conn)
+            st.markdown(f"**Generated SQL Query:**\n```sql\n{sql_query}\n```")
+            st.write("**Query Result:**")
+            st.dataframe(result)
         else:
-            bot_response = "No relevant data found."
-
-        # Append bot response to chat history
-        st.session_state.messages.append({"role": "assistant", "content": bot_response})
-
-        # Display bot response
-        with st.chat_message("assistant"):
-            st.write(bot_response)
-
-# Run the Streamlit app
-if __name__ == "__main__":
-    main()
+            st.error("Sorry, I couldn't generate a valid SQL query.")
+    except Exception as e:
+        st.error(f"Error processing query: {e}")
