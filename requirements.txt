@@ -1,8 +1,6 @@
-pip install --upgrade pip
 pandas
 psycopg2
 streamlit
 letta-client
 sqlalchemy
-openpyxl  # Required for reading Excel files
-rich  # For improved logging and exception handling
+openpyxl
