@@ -39,4 +39,5 @@ streamlit run app.py
 - `What is all cost?`
 - `What is cost?`
 - `What is profit?`
+- `what is total profit?`
 
