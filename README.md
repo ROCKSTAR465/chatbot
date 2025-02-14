@@ -4,7 +4,7 @@
 This is a **Text-to-SQL Chatbot** built with **Streamlit** that allows users to upload an **Excel file**, ask **natural language queries**, and get **SQL-generated results** from the stored data. The chatbot uses a **Transformer-based model** (`cssupport/t5-small-awesome-text-to-sql`) to convert natural language into SQL queries. [Streamlit app link](https://chatbotic.streamlit.app/)
 
 ## 🚀 Features
-- Upload an **Excel file** and store it in a SQLite database.
+- Upload an **Excel file** (provided within the repo) and store it in a SQLite database.
 - Enter a **natural language query**, and the chatbot generates the corresponding **SQL query**.
 - Retrieve and display **query results** from the database.
 - **Interactive UI** built with Streamlit.
