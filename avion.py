@@ -1,30 +1,30 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-import json
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 import torch
 import re
-import os
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
 # Load tokenizer and model for text-to-SQL conversion
 tokenizer = AutoTokenizer.from_pretrained("cssupport/t5-small-awesome-text-to-sql", use_fast=False)
 model = AutoModelForSeq2SeqLM.from_pretrained("cssupport/t5-small-awesome-text-to-sql")
 
-# Paths for database and chat history storage
+# Paths for database
 db_path = "chatbot_data.db"
-chat_memory_path = "chat_memory.json"
 
+# Function to initialize the database
 def init_db():
     conn = sqlite3.connect(db_path)
     return conn
 
-def upload_and_store_data(file, conn):
-    df = pd.read_excel(file)
+# Function to upload and store data
+def upload_and_store_data(file_path, conn):
+    df = pd.read_excel(file_path)
     table_name = "data_table"
     df.to_sql(table_name, conn, if_exists='replace', index=False)
     return df
 
+# Function to generate SQL query from natural language input
 def generate_sql_query(user_input, table_name):
     prompt = (
         f"Translate the following natural language query into an SQL query: "
@@ -38,37 +38,41 @@ def generate_sql_query(user_input, table_name):
     sql_match = re.search(r"select.*?from.*?(where.*?|);?$", result, re.IGNORECASE | re.DOTALL)
     return sql_match.group(0).strip() if sql_match else None
 
-def load_chat_memory():
-    if os.path.exists(chat_memory_path):
-        with open(chat_memory_path, "r") as f:
-            return json.load(f)
-    return []
+# Streamlit UI
+st.title("📊 Text-to-SQL Chatbot")
 
-def save_chat_memory(history):
-    with open(chat_memory_path, "w") as f:
-        json.dump(history, f)
-
-st.title("Text-to-SQL Chatbot")
-st.sidebar.header("Upload an Excel file")
-
+# Initialize database connection
 conn = init_db()
 
-uploaded_file = st.sidebar.file_uploader("Choose an Excel file", type=["xlsx"])
+# File Upload Section
+st.sidebar.header("Upload Excel File")
+uploaded_file = st.sidebar.file_uploader("Choose an Excel file", type=["xlsx", "xls"])
+
 if uploaded_file:
     df = upload_and_store_data(uploaded_file, conn)
-    st.write("Data uploaded successfully! Here is a preview:")
-    st.dataframe(df.head())
+    st.sidebar.success("File uploaded and stored successfully!")
+    st.sidebar.write("### Data Preview:")
+    st.sidebar.dataframe(df.head())
 
-user_query = st.text_input("Ask your question about the data:")
-if user_query:
-    try:
-        sql_query = generate_sql_query(user_query, "data_table")
-        if sql_query:
-            result = pd.read_sql_query(sql_query, conn)
-            st.markdown(f"**Generated SQL Query:**\n```sql\n{sql_query}\n```")
-            st.write("**Query Result:**")
-            st.dataframe(result)
-        else:
-            st.error("Sorry, I couldn't generate a valid SQL query.")
-    except Exception as e:
-        st.error(f"Error processing query: {e}")
+# Query Input Section
+st.subheader("Ask a question about your data:")
+user_input = st.text_area("Enter your query in natural language")
+
+if st.button("Generate SQL Query"):
+    if uploaded_file:
+        table_name = "data_table"
+        try:
+            sql_query = generate_sql_query(user_input, table_name)
+            if sql_query:
+                result = pd.read_sql_query(sql_query, conn)
+                st.write("### **Generated SQL Query:**")
+                st.code(sql_query, language="sql")
+                
+                st.write("### **Query Result:**")
+                st.dataframe(result)
+            else:
+                st.error("Sorry, I couldn't generate a valid SQL query.")
+        except Exception as e:
+            st.error(f"Error processing query: {e}")
+    else:
+        st.warning("Please upload an Excel file first.")
