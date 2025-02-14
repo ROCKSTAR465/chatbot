@@ -1,6 +1,6 @@
-chainlit
+streamlit
 pandas
 torch
 transformers
-sqlite3
+SentencePiece
 openpyxl
